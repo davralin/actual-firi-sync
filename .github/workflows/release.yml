@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      calver_tag: ${{ steps.calver.outputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+
+      - name: Compute CalVer tag
+        id: calver
+        run: echo "tag=$(date +'%Y.%m.%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if tag already exists
+        id: check
+        run: |
+          if git ls-remote --tags origin "${{ steps.calver.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
+
+      - name: Docker metadata
+        id: meta
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.calver.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Login to GHCR
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
+        with:
+          context: .
+          file: Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+
+      - name: Trivy - image scan
+        if: steps.check.outputs.exists == 'false'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        env:
+          TRIVY_SKIP_VERSION_CHECK: "true"
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          scanners: vuln
+          # Soft mode: omit exit-code. Hard mode: add exit-code: '1'.
+          format: sarif
+          output: trivy-image.sarif
+
+      - name: Upload image SARIF
+        if: always() && steps.check.outputs.exists == 'false'
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  provenance:
+    needs: [image]
+    if: needs.image.outputs.digest != ''
+    permissions:
+      actions: read
+      id-token: write
+      packages: write
+    # Keep tag-pinned. Digest pinning breaks verifier-compatible OIDC claims.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ghcr.io/${{ github.repository }}
+      digest: ${{ needs.image.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    needs: [provenance, image]
+    if: needs.image.outputs.digest != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+      - name: Push CalVer tag
+        run: |
+          git tag "${{ needs.image.outputs.calver_tag }}"
+          git push origin "${{ needs.image.outputs.calver_tag }}"
+      - name: Generate changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="${{ needs.image.outputs.calver_tag }}" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq .body > "$RUNNER_TEMP/generated-notes.md"
+      - name: Write release notes
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## Image
+
+          - Image: `ghcr.io/${{ github.repository }}:${{ needs.image.outputs.calver_tag }}`
+          - Digest: `ghcr.io/${{ github.repository }}@${{ needs.image.outputs.digest }}`
+          - Latest: `ghcr.io/${{ github.repository }}:latest`
+
+          SBOM, build provenance, and SLSA provenance are published with the container image.
+
+          ## Verification
+
+          ```sh
+          slsa-verifier verify-image ghcr.io/${{ github.repository }}:${{ needs.image.outputs.calver_tag }} \
+            --source-uri github.com/${{ github.repository }} \
+            --source-tag ${{ needs.image.outputs.calver_tag }}
+          ```
+
+          ## Changes
+          EOF
+          cat "$RUNNER_TEMP/generated-notes.md" >> "$RUNNER_TEMP/release-notes.md"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.image.outputs.calver_tag }}" \
+            --title "${{ needs.image.outputs.calver_tag }}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest

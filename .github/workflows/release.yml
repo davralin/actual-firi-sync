@@ -74,7 +74,7 @@ jobs:
 
       - name: Trivy - image scan
         if: steps.check.outputs.exists == 'false'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8  # v0.36.0
         env:
           TRIVY_SKIP_VERSION_CHECK: "true"
         with:
@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload image SARIF
         if: always() && steps.check.outputs.exists == 'false'
-        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4
+        uses: github/codeql-action/upload-sarif@bce182f857edf1feab116e9795a3393d21977282  # v4
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image

@@ -1,34 +1,76 @@
-# New Repository Setup
+# actual-firi-sync
 
-This repository includes inherited operational standards and ADRs.
+Containerized one-shot job that syncs Firi wallet value into one Actual Budget off-budget account.
 
-Use the ADRs first. Workflows and config follow repository decisions, not the other way around.
+The job fetches Firi balances, values non-NOK holdings through `${currency}NOK` markets using Firi `last` prices, and writes one deterministic daily Actual adjustment transaction.
 
-## Setup Order
+## Actual Model
 
-1. Read `adr/`.
-2. Add repo-specific ADRs for durable decisions.
-3. Define artifacts and deployable process responsibilities.
-4. Keep the active single-image workflow unless a later ADR justifies a different topology.
-5. Replace this README with repo-specific usage and development docs.
-6. Replace placeholders that depend on repo-specific architecture.
-7. Update `.github/CODEOWNERS` for the repo owner/team.
-8. Add app source, build, lint, test, package, and runtime files.
+- Account: one off-budget account, default `Firi`.
+- Transaction imported ID: `firi-balance-YYYY-MM-DD`.
+- Payee: `Firi valuation`.
+- Amount: daily adjustment needed to make Actual match the current Firi NOK valuation.
+- State: no database; Actual imported IDs provide idempotency.
 
-## Decisions To Record
+If the daily transaction already exists, the job updates that transaction instead of creating a duplicate. The adjustment calculation removes the existing same-day adjustment from the current Actual balance before calculating the replacement amount, so reruns during the same day track Firi price movement.
 
-- What the repo builds and releases.
-- What deployable process responsibilities exist.
-- Whether the repo publishes release container images.
-- Release cadence and tag policy.
-- Vulnerability scan posture.
-- Renovate automerge posture.
-- Deployment artifact policy.
+## Valuation
 
-## Before First Commit
+- NOK balances are included directly.
+- Non-NOK balances are valued through Firi `${currency}NOK` markets.
+- The current implementation uses Firi market `last` prices.
+- Zero balances are ignored.
+- A non-zero non-NOK balance without a NOK market fails the run instead of silently dropping value.
 
-- Every durable repo-specific choice is captured in an ADR.
-- Inherited ADRs are accepted or superseded by later ADRs.
-- Workflows reflect the ADR-defined deployable units.
-- Placeholder values are replaced.
-- No workflow or config exists without a repository decision behind it.
+The app stores no durable state outside Actual Budget and the local Actual API cache directory.
+
+## Configuration
+
+Required environment variables:
+
+```env
+ACTUAL_SERVER_URL=https://actual.example.com
+ACTUAL_PASSWORD=example-actual-password
+ACTUAL_SYNC_ID=00000000-0000-0000-0000-000000000000
+
+FIRI_API_KEY=example-api-key
+FIRI_CLIENT_ID=example-client-id
+FIRI_SECRET_KEY=example-secret-key
+```
+
+Optional environment variables:
+
+```env
+ACTUAL_DATA_DIR=/app/cache
+ACTUAL_ACCOUNT_NAME=Firi
+ACTUAL_CREATE_ACCOUNT=false
+FIRI_API_BASE=https://api.firi.com
+FIRI_SIGNATURE_VALIDITY=2000
+DRY_RUN=false
+TZ=UTC
+```
+
+`DRY_RUN=false` is the default. Set `DRY_RUN=true` to preview the planned Actual change without writing it.
+
+`ACTUAL_CREATE_ACCOUNT=false` is the default. If the account is missing, the job fails unless `ACTUAL_CREATE_ACCOUNT=true` is set.
+
+`TZ` controls the calendar day used in `firi-balance-YYYY-MM-DD` and defaults to `UTC`.
+
+## Development
+
+```sh
+npm ci
+npm test
+npm run typecheck
+docker build -f Containerfile -t actual-firi-sync:local .
+```
+
+Run the container with an env file:
+
+```sh
+docker run --rm --env-file .env actual-firi-sync:local
+```
+
+## Container
+
+The image is a batch/CronJob image and intentionally declares `HEALTHCHECK NONE`.

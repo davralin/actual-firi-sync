@@ -1,0 +1,24 @@
+{
+  "name": "actual-firi-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sync Firi wallet value into an Actual Budget off-budget account.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@actual-app/api": "26.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "tsx": "4.23.4",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

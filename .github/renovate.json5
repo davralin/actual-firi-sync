@@ -64,6 +64,18 @@
       commitMessageExtra: '( {{currentDigestShort}} → {{newDigestShort}} )',
     },
     {
+      description: 'Keep Node runtime on 24.x',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['node'],
+      allowedVersions: '/^24([.-]|$)/',
+    },
+    {
+      description: 'Keep Node types on 24.x',
+      matchManagers: ['npm'],
+      matchPackageNames: ['@types/node'],
+      allowedVersions: '/^24\\./',
+    },
+    {
       description: 'GitHub Actions major updates',
       matchManagers: ['github-actions'],
       matchUpdateTypes: ['major'],

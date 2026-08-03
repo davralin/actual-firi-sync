@@ -1,4 +1,4 @@
-FROM node:22-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS build
+FROM node:24-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7 AS build
 
 WORKDIR /app
 
@@ -11,14 +11,26 @@ RUN npm run build
 
 RUN npm prune --omit=dev
 
-FROM node:22-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46
+FROM node:24-slim@sha256:235600a8101ab264e117b1768e925532262668dc9b581ef1dd7d96ced463b8e7
 
 LABEL org.opencontainers.image.title="actual-firi-sync"
 LABEL org.opencontainers.image.description="Sync Firi wallet value into an Actual Budget off-budget account"
 
 ENV NODE_ENV=production
 WORKDIR /app
-RUN mkdir -p /app/cache && chown node:node /app/cache
+RUN rm -rf \
+    /usr/local/bin/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/pnpm \
+    /usr/local/bin/pnpx \
+    /usr/local/bin/yarn \
+    /usr/local/bin/yarnpkg \
+    /opt/yarn* \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/lib/node_modules/npm \
+  && mkdir -p /app/cache \
+  && chown node:node /app/cache
 
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/node_modules ./node_modules

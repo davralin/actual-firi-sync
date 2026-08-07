@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@actual-app/api": "26.8.0"
+    "@actual-app/api": "26.8.1"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

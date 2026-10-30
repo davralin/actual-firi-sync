@@ -1,4 +1,4 @@
-FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS build
+FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS build
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN npm run build
 
 RUN npm prune --omit=dev
 
-FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
+FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
 
 LABEL org.opencontainers.image.title="actual-firi-sync"
 LABEL org.opencontainers.image.description="Sync Firi wallet value into an Actual Budget off-budget account"
